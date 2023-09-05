@@ -3,8 +3,8 @@ script_dir = scripts
 test_command = cd testing && btest -c btest.cfg
 summary = A QUIC protocol analyzer based on Spicy
 description = A QUIC protocol analyzer based on Spicy
-depends = 
-	zeek >=4.0.0
+depends =
+	zeek >=5.2.0
 build_command = mkdir -p build && cd build && SPICYZ=$(command -v spicyz || echo %(package_base)s/spicy-plugin/build/bin/spicyz) cmake .. && cmake --build .
 
 [template]
