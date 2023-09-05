@@ -242,8 +242,18 @@ type InitialPacket = unit(header: LongHeaderPacket) {
   var header: LongHeaderPacket = header;
   token_length: VariableLengthInteger;
   token: bytes &size=self.token_length.result;
-  length: VariableLengthInteger;
-  # Consume the remainder of payload. This is
+
+  # 5.4.2. Header Protection Sample
+  #
+  #   That is, in sampling packet ciphertext for header
+  #   protection, the Packet Number field is assumed to
+  #   be 4 bytes long (its maximum possible encoded length).
+  #
+  # Enforce 4 bytes Packet Number length + 16 bytes sample
+  # ciphertext available.
+  length: VariableLengthInteger &requires=self.length.result >= 20;
+
+  # Consume the remainder of payload. This
   # includes the packet number field, but we
   # do not know its length yet. We need the
   # payload for sampling, however.
@@ -385,7 +395,7 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
             # This means that here, we can try to decrypt the initial packet!
             # All data is accessible via the `long_header` unit
 
-            self.decrypted_data = decrypt_crypto_payload(self.fpack.data, 
+            self.decrypted_data = decrypt_crypto_payload(self.fpack.data,
                                    self.long_header.dest_conn_id,
                                    self.long_header.encrypted_offset,
                                    self.long_header.payload_length,
@@ -408,6 +418,12 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
                                    self.long_header.payload_length,
                                    from_client);
           }
+
+          # We attempted decryption, but it failed. Just reject the
+          # input and assume Zeek will disable the analyzer for this
+          # connection.
+          if ( |self.decrypted_data| == 0 )
+            throw "decryption failed";
         }
 
         # If it's a reply from the server and it's not a REPLY, we assume the keys are restablished and decryption is no longer possible
@@ -454,6 +470,9 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
         context.client_initial_processed = True;
       else
         context.server_initial_processed = True;
+
+      # Take buffered crypto data as confirmation signal.
+      spicy::accept_input();
     }
   }
 };
