@@ -8,11 +8,11 @@ refactors as C++ development is not our main profession.
 */
 
 // Default imports
-#include <stdlib.h>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
-#include <vector>
-#include <iostream>
 #include <string>
+#include <vector>
 
 // OpenSSL imports
 #include <openssl/kdf.h>
@@ -136,7 +136,7 @@ std::vector<uint8_t> hkdf_expand(size_t out_len,
 /*
 Removes the header protection from the INITIAL packet and returns a DecryptionInformation struct that is partially filled
 */
-DecryptionInformation remove_header_protection(std::vector<uint8_t> client_hp, uint8_t encrypted_offset, std::vector<uint8_t> encrypted_packet)
+DecryptionInformation remove_header_protection(std::vector<uint8_t> client_hp, uint64_t encrypted_offset, std::vector<uint8_t> encrypted_packet)
 {
     DecryptionInformation decryptInfo;
     int outlen;
@@ -330,6 +330,13 @@ hilti::rt::Bytes decrypt_crypto_payload(
     const hilti::rt::Bool &from_client)
 {
 
+    if ( payload_length < 20 )
+        throw hilti::rt::RuntimeError(hilti::rt::fmt("payload too small %ld < 20", payload_length));
+
+    if ( entire_packet.size() < encrypted_offset + payload_length )
+        throw hilti::rt::RuntimeError(hilti::rt::fmt("packet too small %ld < %ld",
+                                                     entire_packet.size(), encrypted_offset + payload_length));
+
     // Fill in the entire packet bytes
     std::vector<uint8_t> e_pkt;
     for (const auto &singlebyte : entire_packet)
@@ -369,7 +376,7 @@ hilti::rt::Bytes decrypt_crypto_payload(
                                           server_client_secret,
                                           HP_INFO);
 
-    DecryptionInformation decryptInfo = remove_header_protection(hp, (uint8_t)encrypted_offset, e_pkt);
+    DecryptionInformation decryptInfo = remove_header_protection(hp, encrypted_offset, e_pkt);
 
     // Calculate the correct nonce for the decryption
     decryptInfo.nonce = calculate_nonce(iv, decryptInfo.packet_number);

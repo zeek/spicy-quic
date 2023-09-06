@@ -4,7 +4,6 @@ protocol analyzer QUIC over UDP:
     ports { 443/udp };
 
 import QUIC;
-import Zeek_QUIC;
 
 # Make the enum available.
 export QUIC::LongPacketType;
