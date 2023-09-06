@@ -170,7 +170,7 @@ public type LongHeaderPacket = unit {
 
   first_byte: bitfield(8) {
       header_form: 7 &convert=cast<HeaderForm>(cast<uint8>($$));
-      fixed_bit: 6; 
+      fixed_bit: 6;
       packet_type: 4..5 &convert=cast<LongPacketType>(cast<uint8>($$));
       type_specific_bits: 0..3 &convert=cast<uint8>($$);
   };
@@ -293,10 +293,10 @@ type RetryPacket = unit(header: LongHeaderPacket) {
 ##############
 
 # TODO: implement
-public type ShortHeader = unit(dest_conn_id_length: uint8) {  
+public type ShortHeader = unit(dest_conn_id_length: uint8) {
   first_byte:  bitfield(8) {
       header_form: 7 &convert=cast<HeaderForm>(cast<uint8>($$));
-      fixed_bit: 6; 
+      fixed_bit: 6;
       spin_bit: 5;
       todo: 0..4;
     };
@@ -379,7 +379,7 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
 @endif
         }
 
-        if ( self.long_header.first_byte.packet_type == LongPacketType::INITIAL 
+        if ( self.long_header.first_byte.packet_type == LongPacketType::INITIAL
             && should_buffer(from_client, context) ) {
 
           # Initialize sink/buffer for accumulating CRYPTO frames.
@@ -412,7 +412,7 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
 
             # Assuming that the client set up the connection, this can be considered the first
             # received Initial from the client. So disable change of ConnectionID's afterwards
-            self.decrypted_data = decrypt_crypto_payload(self.fpack.data, 
+            self.decrypted_data = decrypt_crypto_payload(self.fpack.data,
                                    context.initial_destination_conn_id,
                                    self.long_header.encrypted_offset,
                                    self.long_header.payload_length,
