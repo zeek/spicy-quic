@@ -40,6 +40,9 @@ export {
 		## extension in ClientHello if available.
 		client_protocol: string &log &optional;
 
+		## Extra information as wel have it.
+		addl: string &log &optional;
+
 		# Has this record been logged.
 		logged: bool &default=F;
 	};
@@ -96,6 +99,32 @@ event QUIC::retry_packet(c: connection, is_orig: bool, version: count, dcid: str
 	{
 	if ( ! c?$quic )
 		return;
+
+	if ( c$quic?$addl )
+		c$quic$addl += "RETRY";
+	else
+		c$quic$addl = "RETRY";
+
+	# If this record hasn't been logged, do so now
+	if ( ! c$quic$logged )
+		Log::write(LOG, c$quic);
+
+	delete c$quic;
+	}
+
+# Upon a connection_close_frame(), if any c$quic state is pending to be logged, do so
+# now and prepare for a new entry.
+event QUIC::connection_close_frame(c: connection, is_orig: bool, version: count, dcid: string, scid: string, error_code: count, reason_phrase: string)
+	{
+	if ( ! c?$quic )
+		return;
+
+	local addl = fmt("ConnectionClose (%s:%s)", error_code, reason_phrase);
+
+	if ( c$quic?$addl )
+		c$quic$addl += ("," + addl);
+	else
+		c$quic$addl = addl;
 
 	# If this record hasn't been logged, do so now
 	if ( ! c$quic$logged )
