@@ -18,6 +18,18 @@ function should_buffer(is_client: bool, info: ConnectionIDInfo): bool {
   return ! info.server_initial_processed;
 }
 
+function can_decrypt(long_header: LongHeaderPacket): bool {
+
+  if ( long_header.first_byte.packet_type != LongPacketType::INITIAL )
+    return False;
+
+  # decrypt_crypto_payload() has known secrets for version 1, nothing else.
+  if ( long_header.version == 0x00000001 )
+    return True;
+
+  return False;
+}
+
 type ConnectionIDInfo = struct {
   client_cid_len: uint8;
   server_cid_len: uint8;
@@ -197,7 +209,7 @@ public type LongHeaderPacket = unit {
 };
 
 # A QUIC Frame.
-public type Frame = unit(packet_type: LongPacketType, from_client: bool, crypto_sink: sink) {
+public type Frame = unit(header: LongHeaderPacket, from_client: bool, crypto_sink: sink) {
   frame_type : uint8 &convert=cast<FrameType>($$);
 
   # TODO: add other FrameTypes as well
@@ -208,8 +220,12 @@ public type Frame = unit(packet_type: LongPacketType, from_client: bool, crypto_
       # Have the sink re-assemble potentially out-of-order cryptodata
       crypto_sink.write(self.c.cryptodata, self.c.offset.result);
     }
+    FrameType::CONNECTION_CLOSE1 -> : ConnectionClosePayload(header);
     FrameType::PADDING -> : /\x00*/;  # eat the padding
     FrameType::PING -> : void;
+    * -> : void {
+      throw "unhandled frame type %s in %s" % (self.frame_type, header.first_byte.packet_type);
+    }
   };
 };
 
@@ -229,6 +245,17 @@ type ACKPayload = unit {
   ack_delay: VariableLengthInteger;
   ack_range_count: VariableLengthInteger;
   first_ack_range: VariableLengthInteger;
+};
+
+type ConnectionClosePayload = unit(header: LongHeaderPacket) {
+  var header: LongHeaderPacket = header;
+  error_code: VariableLengthInteger;
+  switch {
+    -> unknown_frame_type: b"\x00";
+    -> frame_type: VariableLengthInteger;
+  };
+  reason_phrase_length: VariableLengthInteger;
+  reason_phrase: bytes &size=self.reason_phrase_length.result;
 };
 
 
@@ -379,8 +406,7 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
 @endif
         }
 
-        if ( self.long_header.first_byte.packet_type == LongPacketType::INITIAL
-            && should_buffer(from_client, context) ) {
+        if ( can_decrypt(self.long_header) && should_buffer(from_client, context) ) {
 
           # Initialize sink/buffer for accumulating CRYPTO frames.
           #
@@ -442,7 +468,7 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
 
   # If this was packet with a long header and decrypted data exists, attempt
   # to parse the plain QUIC frames from it.
-  frames: Frame(self.long_header.first_byte.packet_type, from_client, self.crypto_sink)[] &parse-from=self.decrypted_data if (self.header_form == HeaderForm::LONG && |self.decrypted_data| > 0);
+  frames: Frame(self.long_header, from_client, self.crypto_sink)[] &parse-from=self.decrypted_data if (self.header_form == HeaderForm::LONG && |self.decrypted_data| > 0);
 
   # Once the Packet is fully parsed, pass the accumulated CRYPTO frames
   # to the SSL analyzer as handshake data.
