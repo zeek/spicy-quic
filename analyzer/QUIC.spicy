@@ -389,14 +389,9 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
   }
 
   # Capture all the packet bytes if we're still have a chance of decrypting the INITIAL PACKETS
-  switch ( self.header_form == HeaderForm::LONG
-           && self.long_packet_type == LongPacketType::INITIAL
-           && should_buffer(context, from_client) ) {
-
-      # XXX: Could we do this with iterators and random access instead?
-      True -> fpack: AllData &try;
-      * -> : void;
-  };
+  fpack: AllData &try if ( self.header_form == HeaderForm::LONG &&
+                           self.long_packet_type == LongPacketType::INITIAL &&
+                           should_buffer(context, from_client) );
 
   # Depending on the header, parse it and update the src/dest ConnectionID's
   switch ( self.header_form ) {
