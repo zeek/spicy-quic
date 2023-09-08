@@ -40,8 +40,18 @@ export {
 		## extension in ClientHello if available.
 		client_protocol: string &log &optional;
 
-		## Extra information as wel have it.
-		addl: string &log &optional;
+		## ======  ====================================================
+		## Letter  Meaning
+		## ======  ====================================================
+		## I       INIT packet
+		## H       HANDSHAKE packet
+		## Z       0RTT packet
+		## R       RETRY packet
+		## C       CONNECTION_CLOSE packet
+		## S       SSL Client/Server Hello
+		history: string &log &default="";
+
+		history_state: vector of string;
 
 		# Has this record been logged.
 		logged: bool &default=F;
@@ -67,6 +77,21 @@ const quic_ports = {
 	784/udp, # DNS-over-QUIC early
 };
 
+function add_to_history(quic: Info, is_orig: bool, what: string)
+	{
+	if ( |quic$history_state| == 10 )
+		return;
+
+	quic$history_state += is_orig ? to_upper(what[0]) : to_lower(what[0]);
+	}
+
+function log_record(quic: Info)
+	{
+	quic$history = join_string_vec(quic$history_state, "");
+	Log::write(LOG, quic);
+	quic$logged = T;
+	}
+
 function set_conn(c: connection, is_orig: bool, version: count, dcid: string, scid: string)
 	{
 	if ( ! c?$quic )
@@ -91,6 +116,19 @@ function set_conn(c: connection, is_orig: bool, version: count, dcid: string, sc
 event QUIC::initial_packet(c: connection, is_orig: bool, version: count, dcid: string, scid: string)
 	{
 	set_conn(c, is_orig, version, dcid, scid);
+	add_to_history(c$quic, is_orig, "INIT");
+	}
+
+event QUIC::handshake_packet(c: connection, is_orig: bool, version: count, dcid: string, scid: string)
+	{
+	set_conn(c, is_orig, version, dcid, scid);
+	add_to_history(c$quic, is_orig, "HANDSHAKE");
+	}
+
+event QUIC::zero_rtt_packet(c: connection, is_orig: bool, version: count, dcid: string, scid: string)
+	{
+	set_conn(c, is_orig, version, dcid, scid);
+	add_to_history(c$quic, is_orig, "ZeroRTT");
 	}
 
 # Upon a retry_packet(), if any c$quic state is pending to be logged, do so
@@ -98,16 +136,13 @@ event QUIC::initial_packet(c: connection, is_orig: bool, version: count, dcid: s
 event QUIC::retry_packet(c: connection, is_orig: bool, version: count, dcid: string, scid: string, retry_token: string, integrity_tag: string)
 	{
 	if ( ! c?$quic )
-		return;
+		set_conn(c, is_orig, version, dcid, scid);
 
-	if ( c$quic?$addl )
-		c$quic$addl += "RETRY";
-	else
-		c$quic$addl = "RETRY";
+	add_to_history(c$quic, is_orig, "RETRY");
 
 	# If this record hasn't been logged, do so now
-	if ( ! c$quic$logged )
-		Log::write(LOG, c$quic);
+	# then remove it.
+	log_record(c$quic);
 
 	delete c$quic;
 	}
@@ -119,16 +154,9 @@ event QUIC::connection_close_frame(c: connection, is_orig: bool, version: count,
 	if ( ! c?$quic )
 		return;
 
-	local addl = fmt("ConnectionClose (%s:%s)", error_code, reason_phrase);
+	add_to_history(c$quic, is_orig, "CONNECTION_CLOSE");
 
-	if ( c$quic?$addl )
-		c$quic$addl += ("," + addl);
-	else
-		c$quic$addl = addl;
-
-	# If this record hasn't been logged, do so now
-	if ( ! c$quic$logged )
-		Log::write(LOG, c$quic);
+	log_record(c$quic);
 
 	delete c$quic;
 	}
@@ -152,17 +180,20 @@ event ssl_extension_application_layer_protocol_negotiation(c: connection, is_cli
 		}
 	}
 
-event ssl_server_hello(c: connection, version: count, record_version: count, possible_ts: time, server_random: string, session_id: string, cipher: count, comp_method: count) &priority=-5
+event ssl_client_hello(c: connection, version: count, record_version: count, possible_ts: time, client_random: string, session_id: string, ciphers: index_vec, comp_methods: index_vec)
 	{
-	if ( ! c?$quic || c$quic$logged )
+	if ( ! c?$quic )
 		return;
 
-	Log::write(LOG, c$quic);
-	c$quic$logged = T;
+	add_to_history(c$quic, T, "SSL");
+	}
 
-	# TODO: Should we disable the analyzer at this point assuming
-	#       the rest will just be protected/encrypted packets into
-	#       which we can't actually see into anyhow?
+event ssl_server_hello(c: connection, version: count, record_version: count, possible_ts: time, server_random: string, session_id: string, cipher: count, comp_method: count) &priority=-5
+	{
+	if ( ! c?$quic )
+		return;
+
+	add_to_history(c$quic, F, "SSL");
 	}
 
 hook finalize_quic(c: connection)
@@ -170,8 +201,7 @@ hook finalize_quic(c: connection)
 	if ( ! c?$quic || c$quic$logged )
 		return;
 
-	Log::write(LOG, c$quic);
-	c$quic$logged = T;
+	log_record(c$quic);
 	}
 
 event zeek_init()
