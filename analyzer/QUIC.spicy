@@ -11,13 +11,17 @@ public function decrypt_crypto_payload(entire_packet: bytes, connection_id: byte
 ## Context - tracked in one connection
 ##############
 
-function should_buffer(is_client: bool, info: ConnectionIDInfo): bool {
+# Should we buffer the packet?
+function should_buffer(context: ConnectionIDInfo, is_client: bool): bool {
   if ( is_client )
-    return ! info.client_initial_processed;
+    return ! context.client_initial_processed;
 
-  return ! info.server_initial_processed;
+  return context.client_initial_processed
+          && |context.initial_destination_conn_id| > 0
+          && ! context.server_initial_processed;
 }
 
+# Can we decrypt?
 function can_decrypt(long_header: LongHeaderPacket): bool {
 
   if ( long_header.first_byte.packet_type != LongPacketType::INITIAL )
@@ -124,7 +128,8 @@ type FrameType = enum {
 # Used to peek into the next byte and determine if it's a long or short packet
 public type InitialByte = unit {
   initialbyte: bitfield(8) {
-    header_form: 7 &convert=cast<HeaderForm>(cast<uint8>($$));
+      header_form: 7 &convert=cast<HeaderForm>(cast<uint8>($$));
+      long_packet_type: 4..5 &convert=cast<LongPacketType>(cast<uint8>($$));
   };
   on %done {
     self.backtrack();
@@ -354,6 +359,7 @@ type CryptoBuffer = unit() {
 ##############
 type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
   var header_form: HeaderForm;
+  var long_packet_type: LongPacketType;
   var decrypted_data: bytes;
   var full_packet: bytes;
 
@@ -376,12 +382,16 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
   }
 
   # Peek into the header to check if it's a SHORT or LONG header
+  # and get the LONG packet type.
   : InitialByte &try {
     self.header_form = $$.initialbyte.header_form;
+    self.long_packet_type = $$.initialbyte.long_packet_type;
   }
 
   # Capture all the packet bytes if we're still have a chance of decrypting the INITIAL PACKETS
-  fpack: AllData &try if ( should_buffer(from_client, context) );
+  fpack: AllData &try if ( self.header_form == HeaderForm::LONG &&
+                           self.long_packet_type == LongPacketType::INITIAL &&
+                           should_buffer(context, from_client) );
 
   # Depending on the header, parse it and update the src/dest ConnectionID's
   switch ( self.header_form ) {
@@ -406,7 +416,7 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
 @endif
         }
 
-        if ( can_decrypt(self.long_header) && should_buffer(from_client, context) ) {
+        if ( can_decrypt(self.long_header) && should_buffer(context, from_client) ) {
 
           # Initialize sink/buffer for accumulating CRYPTO frames.
           #
