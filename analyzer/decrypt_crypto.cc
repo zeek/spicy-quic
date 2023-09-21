@@ -72,7 +72,7 @@ const size_t MAXIMUM_PACKET_LENGTH = 1500;
 const size_t MAXIMUM_PACKET_NUMBER_LENGTH = 4;
 
 /*
-HKDF-Extract as decribed in https://www.rfc-editor.org/rfc/rfc8446.html#section-7.1
+HKDF-Extract as described in https://www.rfc-editor.org/rfc/rfc8446.html#section-7.1
 */
 std::vector<uint8_t> hkdf_extract(std::vector<uint8_t> connection_id)
 	{
@@ -91,7 +91,7 @@ std::vector<uint8_t> hkdf_extract(std::vector<uint8_t> connection_id)
 	}
 
 /*
-HKDF-Expand-Label as decribed in https://www.rfc-editor.org/rfc/rfc8446.html#section-7.1
+HKDF-Expand-Label as described in https://www.rfc-editor.org/rfc/rfc8446.html#section-7.1
 that uses the global constant labels such as 'quic hp'.
 */
 std::vector<uint8_t> hkdf_expand(size_t out_len, std::vector<uint8_t> key,
