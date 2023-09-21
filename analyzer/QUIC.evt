@@ -1,7 +1,6 @@
 protocol analyzer QUIC over UDP:
     parse originator with QUIC::RequestFrame,
-    parse responder with QUIC::ResponseFrame,
-    ports { 443/udp };
+    parse responder with QUIC::ResponseFrame;
 
 import QUIC;
 
