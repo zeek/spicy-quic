@@ -46,7 +46,7 @@ type ConnectionIDInfo = struct {
   initial_destination_conn_id: bytes;
 
   # Currently, this analyzer assumes that ClientHello
-  # and ServerHello fit into the first INITAL packet (and
+  # and ServerHello fit into the first INITIAL packet (and
   # that there is only one that we're interested in.
   #
   # But minimally the following section sounds like this might not
