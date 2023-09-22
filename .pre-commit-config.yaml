@@ -11,3 +11,8 @@ repos:
   rev: 'v13.0.0'
   hooks:
   - id: clang-format
+- repo: https://github.com/crate-ci/typos
+  rev: v1.16.12
+  hooks:
+    - id: typos
+      exclude: '^(.typos.toml|testing/.*)$'
