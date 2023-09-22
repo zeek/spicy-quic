@@ -1,5 +1,4 @@
-##! Idea for a quic.log that only logs entries for QUIC connections
-##! where the INITIAL packets are decrypted ClientHello / ServerHello.
+##! Initial idea for a quic.log.
 
 @load base/frameworks/notice/weird
 @load base/protocols/conn/removal-hooks
@@ -12,7 +11,7 @@ export {
 	redef enum Log::ID += { LOG };
 
 	type Info: record {
-		## Time of first INITIAL packet observed for this connection.
+		## Timestamp of first QUIC packet for this entry.
 		ts:          time    &log;
 		## Unique ID for the connection.
 		uid:         string  &log;
@@ -26,20 +25,26 @@ export {
 		## First Destination Connection ID used by client. This is
 		## random and unpredictable, but used for packet protection
 		## by client and server.
-		## https://datatracker.ietf.org/doc/html/rfc9000#name-negotiating-connection-ids
 		client_initial_dcid: string  &log &optional;
 
-		## Server chosen Connection ID in server's INITIAL packet.
-		## This is to be used by the client in subsequent packets.
+		## Server chosen Connection ID usually from server's first
+		## INITIAL packet. This is to be used by the client in
+		## subsequent packets.
 		server_scid:        string  &log &optional;
 
-		## From ClientHello in client INITIAL packet if available.
+		## Server name extracted from SNI extension in ClientHello
+		## packet if available.
 		server_name: string  &log &optional;
 
-		## First protocol in list as requested by client via ALPN
-		## extension in ClientHello if available.
+		## First protocol extracted from ALPN extension in ClientHello
+		## packet if available.
 		client_protocol: string &log &optional;
 
+		## Experimental QUIC history.
+		##
+		## Letters have the following meaning with client-sent
+		## letters being capitalized:
+		##
 		## ======  ====================================================
 		## Letter  Meaning
 		## ======  ====================================================
@@ -49,11 +54,13 @@ export {
 		## R       RETRY packet
 		## C       CONNECTION_CLOSE packet
 		## S       SSL Client/Server Hello
+		## ======  ====================================================
 		history: string &log &default="";
 
+		# Internal state for the history field.
 		history_state: vector of string;
 
-		# Has this record been logged.
+		# Internal state if this record has already been logged.
 		logged: bool &default=F;
 	};
 
@@ -131,8 +138,7 @@ event QUIC::zero_rtt_packet(c: connection, is_orig: bool, version: count, dcid: 
 	add_to_history(c$quic, is_orig, "ZeroRTT");
 	}
 
-# Upon a retry_packet(), if any c$quic state is pending to be logged, do so
-# now and prepare for a new entry.
+# RETRY packets trigger a log entry and state reset.
 event QUIC::retry_packet(c: connection, is_orig: bool, version: count, dcid: string, scid: string, retry_token: string, integrity_tag: string)
 	{
 	if ( ! c?$quic )
@@ -140,8 +146,6 @@ event QUIC::retry_packet(c: connection, is_orig: bool, version: count, dcid: str
 
 	add_to_history(c$quic, is_orig, "RETRY");
 
-	# If this record hasn't been logged, do so now
-	# then remove it.
 	log_record(c$quic);
 
 	delete c$quic;
