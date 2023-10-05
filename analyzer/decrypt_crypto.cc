@@ -184,7 +184,7 @@ DecryptionInformation remove_header_protection(const std::vector<uint8_t>& clien
 Calculate the nonce for the AEAD by XOR'ing the CLIENT_IV and the
 decoded packet number, and returns the nonce
 */
-std::vector<uint8_t> calculate_nonce(std::vector<uint8_t> client_iv, uint64_t packet_number)
+std::vector<uint8_t> calculate_nonce(const std::vector<uint8_t>& client_iv, uint64_t packet_number)
 	{
 	std::vector<uint8_t> nonce = client_iv;
 
