@@ -74,7 +74,7 @@ const size_t MAXIMUM_PACKET_NUMBER_LENGTH = 4;
 /*
 HKDF-Extract as described in https://www.rfc-editor.org/rfc/rfc8446.html#section-7.1
 */
-std::vector<uint8_t> hkdf_extract(std::vector<uint8_t> connection_id)
+std::vector<uint8_t> hkdf_extract(const hilti::rt::Bytes& connection_id)
 	{
 	std::vector<uint8_t> out_temp(INITIAL_SECRET_LEN);
 	size_t initial_secret_len = out_temp.size();
@@ -83,9 +83,10 @@ std::vector<uint8_t> hkdf_extract(std::vector<uint8_t> connection_id)
 	EVP_PKEY_derive_init(pctx);
 	EVP_PKEY_CTX_hkdf_mode(pctx, EVP_PKEY_HKDEF_MODE_EXTRACT_ONLY);
 	EVP_PKEY_CTX_set_hkdf_md(pctx, digest);
-	EVP_PKEY_CTX_set1_hkdf_key(pctx, connection_id.data(), connection_id.size());
+	EVP_PKEY_CTX_set1_hkdf_key(pctx, reinterpret_cast<const unsigned char*>(connection_id.data()),
+	                           connection_id.size());
 	EVP_PKEY_CTX_set1_hkdf_salt(pctx, INITIAL_SALT_V1.data(), INITIAL_SALT_V1.size());
-	EVP_PKEY_derive(pctx, out_temp.data(), reinterpret_cast<size_t*>(&initial_secret_len));
+	EVP_PKEY_derive(pctx, out_temp.data(), &initial_secret_len);
 	EVP_PKEY_CTX_free(pctx);
 	return out_temp;
 	}
@@ -279,13 +280,7 @@ hilti::rt::Bytes decrypt_crypto_payload(const hilti::rt::stream::SafeConstIterat
 	while ( ! it.isEnd() )
 		e_pkt.push_back(*(it++));
 
-	std::vector<uint8_t> cnnid;
-	for ( const auto& singlebyte : connection_id )
-		{
-		cnnid.push_back(singlebyte);
-		}
-
-	std::vector<uint8_t> initial_secret = hkdf_extract(cnnid);
+	std::vector<uint8_t> initial_secret = hkdf_extract(connection_id);
 
 	std::vector<uint8_t> server_client_secret;
 	if ( from_client )
