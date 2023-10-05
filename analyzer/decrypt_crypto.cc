@@ -201,22 +201,20 @@ std::vector<uint8_t> calculate_nonce(const std::vector<uint8_t>& client_iv, uint
 Function that calls the AEAD decryption routine, and returns the
 decrypted data
 */
-std::vector<uint8_t> decrypt(std::vector<uint8_t> client_key, std::vector<uint8_t> encrypted_packet,
-                             uint64_t payload_length, DecryptionInformation decryptInfo)
+
+hilti::rt::Bytes decrypt(const std::vector<uint8_t>& client_key,
+                         const std::vector<uint8_t>& encrypted_packet, uint64_t payload_length,
+                         const DecryptionInformation& decryptInfo)
 	{
 	int out, out2, res;
-	std::vector<uint8_t> encrypted_payload(
-		encrypted_packet.begin() + decryptInfo.protected_header.size(),
+	const uint8_t* encrypted_payload = &encrypted_packet[decryptInfo.protected_header.size()];
+	int encrypted_payload_size = payload_length - decryptInfo.packet_number_length -
+	                             AEAD_TAG_LENGTH;
 
-		encrypted_packet.begin() + decryptInfo.protected_header.size() + payload_length -
-			decryptInfo.packet_number_length - AEAD_TAG_LENGTH);
-
-	std::vector<uint8_t> tag_to_check(
-		encrypted_packet.begin() + decryptInfo.protected_header.size() + payload_length -
-			decryptInfo.packet_number_length - AEAD_TAG_LENGTH,
-
-		encrypted_packet.begin() + decryptInfo.protected_header.size() + payload_length -
-			decryptInfo.packet_number_length);
+	const uint8_t* tag_to_check =
+		&encrypted_packet[decryptInfo.protected_header.size() + payload_length -
+	                      decryptInfo.packet_number_length - AEAD_TAG_LENGTH];
+	int tag_to_check_length = AEAD_TAG_LENGTH;
 
 	unsigned char decrypt_buffer[MAXIMUM_PACKET_LENGTH];
 
@@ -235,7 +233,7 @@ std::vector<uint8_t> decrypt(std::vector<uint8_t> client_key, std::vector<uint8_
 	EVP_CipherInit_ex(ctx, NULL, NULL, client_key.data(), decryptInfo.nonce.data(), 0);
 
 	// Set the tag to be validated after decryption
-	EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_TAG, tag_to_check.size(), tag_to_check.data());
+	EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_TAG, tag_to_check_length, (void*)tag_to_check);
 
 	// Setting the second parameter to NULL will pass it as Associated Data
 	EVP_CipherUpdate(ctx, NULL, &out, decryptInfo.unprotected_header.data(),
@@ -243,16 +241,14 @@ std::vector<uint8_t> decrypt(std::vector<uint8_t> client_key, std::vector<uint8_
 
 	// Set the actual data to decrypt data into the decrypt_buffer. The amount of
 	// byte decrypted is stored into `out`
-	EVP_CipherUpdate(ctx, decrypt_buffer, &out, encrypted_payload.data(), encrypted_payload.size());
+	EVP_CipherUpdate(ctx, decrypt_buffer, &out, encrypted_payload, encrypted_payload_size);
 
 	// Validate whether the decryption was successful or not
 	EVP_CipherFinal_ex(ctx, NULL, &out2);
 	EVP_CIPHER_CTX_free(ctx);
 
-	// Copy the decrypted data from the decrypted buffer into a new vector and return this
-	// Use the `out` variable to only include relevant bytes
-	std::vector<uint8_t> decrypted_data(decrypt_buffer, decrypt_buffer + out);
-	return decrypted_data;
+	// Copy the decrypted data from the decrypted buffer into a Bytes instance.
+	return hilti::rt::Bytes(decrypt_buffer, decrypt_buffer + out);
 	}
 
 /*
@@ -301,9 +297,5 @@ hilti::rt::Bytes decrypt_crypto_payload(const hilti::rt::stream::SafeConstIterat
 	// Calculate the correct nonce for the decryption
 	decryptInfo.nonce = calculate_nonce(iv, decryptInfo.packet_number);
 
-	std::vector<uint8_t> decrypted_data = decrypt(key, e_pkt, payload_length, decryptInfo);
-
-	// Return it as hilti Bytes again
-	hilti::rt::Bytes decr(decrypted_data.begin(), decrypted_data.end());
-	return decr;
+	return decrypt(key, e_pkt, payload_length, decryptInfo);
 	}
