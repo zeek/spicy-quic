@@ -115,9 +115,9 @@ std::vector<uint8_t> hkdf_expand(size_t out_len, const std::vector<uint8_t>& key
 Removes the header protection from the INITIAL packet and returns a DecryptionInformation struct
 that is partially filled
 */
-DecryptionInformation remove_header_protection(std::vector<uint8_t> client_hp,
+DecryptionInformation remove_header_protection(const std::vector<uint8_t>& client_hp,
                                                uint64_t encrypted_offset,
-                                               std::vector<uint8_t> encrypted_packet)
+                                               const std::vector<uint8_t>& encrypted_packet)
 	{
 	DecryptionInformation decryptInfo;
 	int outlen;
@@ -128,13 +128,13 @@ DecryptionInformation remove_header_protection(std::vector<uint8_t> client_hp,
 	// Passing an 1 means ENCRYPT
 	EVP_CipherInit_ex(ctx, NULL, NULL, client_hp.data(), NULL, 1);
 
-	std::vector<uint8_t> sample(encrypted_packet.begin() + encrypted_offset +
-	                                MAXIMUM_PACKET_NUMBER_LENGTH,
+	assert(encrypted_packet.size() >=
+	       encrypted_offset + MAXIMUM_PACKET_NUMBER_LENGTH + AEAD_SAMPLE_LENGTH);
 
-	                            encrypted_packet.begin() + encrypted_offset +
-	                                MAXIMUM_PACKET_NUMBER_LENGTH + AEAD_SAMPLE_LENGTH);
-	std::vector<uint8_t> mask(sample.size());
-	EVP_CipherUpdate(ctx, mask.data(), &outlen, sample.data(), AEAD_SAMPLE_LENGTH);
+	const uint8_t* sample = &encrypted_packet[encrypted_offset + MAXIMUM_PACKET_NUMBER_LENGTH];
+
+	std::vector<uint8_t> mask(AEAD_SAMPLE_LENGTH);
+	EVP_CipherUpdate(ctx, mask.data(), &outlen, sample, AEAD_SAMPLE_LENGTH);
 	EVP_CIPHER_CTX_free(ctx);
 
 	// To determine the actual packet number length,
@@ -175,8 +175,8 @@ DecryptionInformation remove_header_protection(std::vector<uint8_t> client_hp,
 	// Store the information back in the struct
 	decryptInfo.packet_number = decoded_packet_number;
 	decryptInfo.packet_number_length = recovered_packet_number_length;
-	decryptInfo.protected_header = protected_header;
-	decryptInfo.unprotected_header = unprotected_header;
+	decryptInfo.protected_header = std::move(protected_header);
+	decryptInfo.unprotected_header = std::move(unprotected_header);
 	return decryptInfo;
 	}
 
