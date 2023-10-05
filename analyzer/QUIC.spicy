@@ -208,7 +208,11 @@ public type Frame = unit(header: LongHeaderPacket, from_client: bool, crypto_sin
       crypto_sink.write(self.c.cryptodata, self.c.offset.result);
     }
     FrameType::CONNECTION_CLOSE1 -> : ConnectionClosePayload(header);
+@if SPICY_VERSION >= 10800
+    FrameType::PADDING -> : skip /\x00*/;  # eat the padding
+@else
     FrameType::PADDING -> : /\x00*/;  # eat the padding
+@endif
     FrameType::PING -> : void;
     * -> : void {
       throw "unhandled frame type %s in %s" % (self.frame_type, header.first_byte.packet_type);
