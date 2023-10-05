@@ -1,0 +1,8 @@
+aioquic==0.9.21
+asgiref
+dnslib
+flask<2.2
+httpbin
+starlette
+werkzeug<2.1
+wsproto

@@ -1,0 +1,35 @@
+version: '3'
+services:
+
+  aioquic-server:
+    build: .
+    init: true
+    entrypoint:
+      - 'python3'
+      - 'examples/http3_server.py'
+      - '--verbose'
+      - '--host'
+      - 'aioquic-server'
+      - '--port'
+      - '443'
+      - '--certificate'
+      - 'certs/aioquic-server.crt'
+      - '--private-key'
+      - 'certs/aioquic-server.key'
+    ports:
+      - '4433:443/udp'
+    networks:
+      - quic
+
+  aioquic-client:
+    build: .
+    init: true
+    entrypoint: ['sleep', 'infinity']
+    networks:
+      - quic
+
+networks:
+  quic:
+    driver_opts:
+      com.docker.network.bridge.name: br-quic0
+      com.docker.network.driver.mtu: 1454

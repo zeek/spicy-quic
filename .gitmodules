@@ -1,0 +1,3 @@
+[submodule "perf/aioquic"]
+	path = perf/aioquic
+	url = git@github.com:aiortc/aioquic.git
