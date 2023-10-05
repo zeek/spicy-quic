@@ -95,8 +95,8 @@ std::vector<uint8_t> hkdf_extract(const hilti::rt::Bytes& connection_id)
 HKDF-Expand-Label as described in https://www.rfc-editor.org/rfc/rfc8446.html#section-7.1
 that uses the global constant labels such as 'quic hp'.
 */
-std::vector<uint8_t> hkdf_expand(size_t out_len, std::vector<uint8_t> key,
-                                 std::vector<uint8_t> info)
+std::vector<uint8_t> hkdf_expand(size_t out_len, const std::vector<uint8_t>& key,
+                                 const std::vector<uint8_t>& info)
 	{
 	std::vector<uint8_t> out_temp(out_len);
 	const EVP_MD* digest = EVP_sha256();
