@@ -4,7 +4,7 @@ import spicy;
 import zeek;
 
 # The interface to the C++ code that handles the decryption of the INITIAL packet payload using well-known keys
-public function decrypt_crypto_payload(entire_packet: bytes, connection_id: bytes, encrypted_offset: uint64, payload_offset: uint64, from_client: bool): bytes &cxxname="decrypt_crypto_payload";
+public function decrypt_crypto_payload(packet: iterator<stream>, connection_id: bytes, encrypted_offset: uint64, payload_offset: uint64, from_client: bool): bytes &cxxname="decrypt_crypto_payload";
 
 
 ##############
@@ -160,17 +160,6 @@ type VariableLengthInteger = unit {
 # Long packets
 # Generic units
 ##############
-
-# Used to capture all data form the entire frame. May be inefficient, but works for now.
-# This is passed to the decryption function, as this function needs both the header and the payload
-# Performs a backtrack() at the end
-type AllData = unit {
-  var data: bytes;
-
-  : bytes &eod {
-    self.data = $$;
-  }
-};
 
 public type LongHeaderPacket = unit {
   var encrypted_offset: uint64;
@@ -385,17 +374,6 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
     self.set_input(self.start);
   }
 
-  # Capture all the packet bytes if we're still have a chance of decrypting the INITIAL PACKETS
-  #
-  # TODO: Make decrypt_crypto_payload() use the iterator<stream> self.start instead of copying
-  #       the data here.
-  fpack: AllData &parse-at=self.input() if ( self.header_form == HeaderForm::LONG &&
-                           self.long_packet_type == LongPacketType::INITIAL &&
-                           should_buffer(context, from_client) ) {
-
-    self.set_input(self.start);
-  }
-
   # Depending on the header, parse it and update the src/dest ConnectionID's
   switch ( self.header_form ) {
     HeaderForm::SHORT -> short_header: ShortHeader(context.client_cid_len);
@@ -434,7 +412,8 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
             # This means that here, we can try to decrypt the initial packet!
             # All data is accessible via the `long_header` unit
 
-            self.decrypted_data = decrypt_crypto_payload(self.fpack.data,
+            self.decrypted_data = decrypt_crypto_payload(
+                                   self.start,
                                    self.long_header.dest_conn_id,
                                    self.long_header.encrypted_offset,
                                    self.long_header.payload_length,
@@ -451,7 +430,8 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
 
             # Assuming that the client set up the connection, this can be considered the first
             # received Initial from the client. So disable change of ConnectionID's afterwards
-            self.decrypted_data = decrypt_crypto_payload(self.fpack.data,
+            self.decrypted_data = decrypt_crypto_payload(
+                                   self.start,
                                    context.initial_destination_conn_id,
                                    self.long_header.encrypted_offset,
                                    self.long_header.payload_length,

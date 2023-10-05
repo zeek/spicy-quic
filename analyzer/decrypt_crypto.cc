@@ -259,7 +259,7 @@ Function that is called from Spicy. It's a wrapper around `process_data`;
 it stores all the passed data in a global struct and then calls `process_data`,
 which will eventually return the decrypted data and pass it back to Spicy.
 */
-hilti::rt::Bytes decrypt_crypto_payload(const hilti::rt::Bytes& entire_packet,
+hilti::rt::Bytes decrypt_crypto_payload(const hilti::rt::stream::SafeConstIterator& packet_stream,
                                         const hilti::rt::Bytes& connection_id,
                                         const hilti::rt::integer::safe<uint64_t>& encrypted_offset,
                                         const hilti::rt::integer::safe<uint64_t>& payload_length,
@@ -269,16 +269,15 @@ hilti::rt::Bytes decrypt_crypto_payload(const hilti::rt::Bytes& entire_packet,
 	if ( payload_length < 20 )
 		throw hilti::rt::RuntimeError(hilti::rt::fmt("payload too small %ld < 20", payload_length));
 
-	if ( entire_packet.size() < encrypted_offset + payload_length )
-		throw hilti::rt::RuntimeError(hilti::rt::fmt(
-			"packet too small %ld < %ld", entire_packet.size(), encrypted_offset + payload_length));
+	if ( (packet_stream + (encrypted_offset + payload_length - 1)).isEnd() )
+		throw hilti::rt::RuntimeError(
+			hilti::rt::fmt("packet too small %ld", encrypted_offset + payload_length));
 
 	// Fill in the entire packet bytes
 	std::vector<uint8_t> e_pkt;
-	for ( const auto& singlebyte : entire_packet )
-		{
-		e_pkt.push_back(singlebyte);
-		}
+	hilti::rt::stream::SafeConstIterator it = packet_stream;
+	while ( ! it.isEnd() )
+		e_pkt.push_back(*(it++));
 
 	std::vector<uint8_t> cnnid;
 	for ( const auto& singlebyte : connection_id )
