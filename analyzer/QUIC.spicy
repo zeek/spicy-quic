@@ -131,9 +131,6 @@ public type InitialByte = unit {
       header_form: 7 &convert=cast<HeaderForm>(cast<uint8>($$));
       long_packet_type: 4..5 &convert=cast<LongPacketType>(cast<uint8>($$));
   };
-  on %done {
-    self.backtrack();
-  }
 };
 
 type VariableLengthInteger = unit {
@@ -172,10 +169,6 @@ type AllData = unit {
 
   : bytes &eod {
     self.data = $$;
-  }
-
-  on %done {
-    self.backtrack();
   }
 };
 
@@ -362,6 +355,7 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
   var long_packet_type: LongPacketType;
   var decrypted_data: bytes;
   var full_packet: bytes;
+  var start: iterator<stream>;
 
   sink crypto_sink;
   var crypto_buffer: CryptoBuffer&;
@@ -379,19 +373,28 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
       context.did_ssl_begin = True;
       }
 @endif
+
+    self.start = self.input();
   }
 
   # Peek into the header to check if it's a SHORT or LONG header
   # and get the LONG packet type.
-  : InitialByte &try {
+  : InitialByte &parse-at=self.input() {
     self.header_form = $$.initialbyte.header_form;
     self.long_packet_type = $$.initialbyte.long_packet_type;
+    self.set_input(self.start);
   }
 
   # Capture all the packet bytes if we're still have a chance of decrypting the INITIAL PACKETS
-  fpack: AllData &try if ( self.header_form == HeaderForm::LONG &&
+  #
+  # TODO: Make decrypt_crypto_payload() use the iterator<stream> self.start instead of copying
+  #       the data here.
+  fpack: AllData &parse-at=self.input() if ( self.header_form == HeaderForm::LONG &&
                            self.long_packet_type == LongPacketType::INITIAL &&
-                           should_buffer(context, from_client) );
+                           should_buffer(context, from_client) ) {
+
+    self.set_input(self.start);
+  }
 
   # Depending on the header, parse it and update the src/dest ConnectionID's
   switch ( self.header_form ) {
