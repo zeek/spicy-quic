@@ -35,6 +35,14 @@ struct DecryptionInformation
 	uint8_t packet_number_length;
 	};
 
+// Return rt::hilti::Bytes::data() value as const uint8_t*
+//
+// This should be alright: https://stackoverflow.com/a/15172304
+inline const uint8_t* data_as_uint8(const hilti::rt::Bytes& b)
+	{
+	return reinterpret_cast<const uint8_t*>(b.data());
+	}
+
 /*
 Constants used in the HKDF functions. HKDF-Expand-Label uses labels
 such as 'quic key' and 'quic hp'. These labels can obviously be
@@ -86,8 +94,7 @@ std::vector<uint8_t> hkdf_extract(const hilti::rt::Bytes& connection_id)
 	EVP_PKEY_derive_init(pctx);
 	EVP_PKEY_CTX_hkdf_mode(pctx, EVP_PKEY_HKDEF_MODE_EXTRACT_ONLY);
 	EVP_PKEY_CTX_set_hkdf_md(pctx, digest);
-	EVP_PKEY_CTX_set1_hkdf_key(pctx, reinterpret_cast<const unsigned char*>(connection_id.data()),
-	                           connection_id.size());
+	EVP_PKEY_CTX_set1_hkdf_key(pctx, data_as_uint8(connection_id), connection_id.size());
 	EVP_PKEY_CTX_set1_hkdf_salt(pctx, INITIAL_SALT_V1.data(), INITIAL_SALT_V1.size());
 	EVP_PKEY_derive(pctx, out_temp.data(), &initial_secret_len);
 	EVP_PKEY_CTX_free(pctx);
@@ -120,7 +127,7 @@ that is partially filled
 */
 DecryptionInformation remove_header_protection(const std::vector<uint8_t>& client_hp,
                                                uint64_t encrypted_offset,
-                                               const std::vector<uint8_t>& encrypted_packet)
+                                               const hilti::rt::Bytes& all_data)
 	{
 	DecryptionInformation decryptInfo;
 	int outlen;
@@ -131,10 +138,11 @@ DecryptionInformation remove_header_protection(const std::vector<uint8_t>& clien
 	// Passing an 1 means ENCRYPT
 	EVP_CipherInit_ex(ctx, NULL, NULL, client_hp.data(), NULL, 1);
 
-	assert(encrypted_packet.size() >=
-	       encrypted_offset + MAXIMUM_PACKET_NUMBER_LENGTH + AEAD_SAMPLE_LENGTH);
+	static_assert(AEAD_SAMPLE_LENGTH > 0);
+	assert(all_data.size() >= encrypted_offset + MAXIMUM_PACKET_NUMBER_LENGTH + AEAD_SAMPLE_LENGTH);
 
-	const uint8_t* sample = &encrypted_packet[encrypted_offset + MAXIMUM_PACKET_NUMBER_LENGTH];
+	const uint8_t* sample = data_as_uint8(all_data) + encrypted_offset +
+	                        MAXIMUM_PACKET_NUMBER_LENGTH;
 
 	std::array<uint8_t, AEAD_SAMPLE_LENGTH> mask;
 	EVP_CipherUpdate(ctx, mask.data(), &outlen, sample, AEAD_SAMPLE_LENGTH);
@@ -142,7 +150,7 @@ DecryptionInformation remove_header_protection(const std::vector<uint8_t>& clien
 
 	// To determine the actual packet number length,
 	// we have to remove the mask from the first byte
-	uint8_t first_byte = encrypted_packet[0];
+	uint8_t first_byte = data_as_uint8(all_data)[0];
 
 	if ( first_byte & 0x80 )
 		{
@@ -157,9 +165,8 @@ DecryptionInformation remove_header_protection(const std::vector<uint8_t>& clien
 	int recovered_packet_number_length = (first_byte & 0x03) + 1;
 
 	// .. and use this to reconstruct the (partially) unprotected header
-	std::vector<uint8_t> unprotected_header(encrypted_packet.begin(),
-
-	                                        encrypted_packet.begin() + encrypted_offset +
+	std::vector<uint8_t> unprotected_header(data_as_uint8(all_data),
+	                                        data_as_uint8(all_data) + encrypted_offset +
 	                                            recovered_packet_number_length);
 
 	uint32_t decoded_packet_number = 0;
@@ -183,17 +190,12 @@ DecryptionInformation remove_header_protection(const std::vector<uint8_t>& clien
 Calculate the nonce for the AEAD by XOR'ing the CLIENT_IV and the
 decoded packet number, and returns the nonce
 */
-std::vector<uint8_t> calculate_nonce(const std::vector<uint8_t>& client_iv, uint64_t packet_number)
+std::vector<uint8_t> calculate_nonce(std::vector<uint8_t> client_iv, uint64_t packet_number)
 	{
-	std::vector<uint8_t> nonce = client_iv;
-
 	for ( int i = 0; i < 8; ++i )
-		{
-		nonce[AEAD_IV_LEN - 1 - i] ^= (uint8_t)(packet_number >> 8 * i);
-		}
+		client_iv[AEAD_IV_LEN - 1 - i] ^= (uint8_t)(packet_number >> 8 * i);
 
-	// Return the nonce
-	return nonce;
+	return client_iv;
 	}
 
 /*
@@ -201,18 +203,34 @@ Function that calls the AEAD decryption routine, and returns the
 decrypted data
 */
 
-hilti::rt::Bytes decrypt(const std::vector<uint8_t>& client_key,
-                         const std::vector<uint8_t>& encrypted_packet, uint64_t payload_length,
-                         const DecryptionInformation& decryptInfo)
+hilti::rt::Bytes decrypt(const std::vector<uint8_t>& client_key, const hilti::rt::Bytes& all_data,
+                         uint64_t payload_length, const DecryptionInformation& decryptInfo)
 	{
 	int out, out2, res;
-	const uint8_t* encrypted_payload = &encrypted_packet[decryptInfo.unprotected_header.size()];
+
+	if ( payload_length < decryptInfo.packet_number_length + AEAD_TAG_LENGTH )
+		throw hilti::rt::RuntimeError(
+			hilti::rt::fmt("payload too small %ld < %ld", payload_length,
+		                   decryptInfo.packet_number_length + AEAD_TAG_LENGTH));
+
+	const uint8_t* encrypted_payload = data_as_uint8(all_data) +
+	                                   decryptInfo.unprotected_header.size();
+
 	int encrypted_payload_size = payload_length - decryptInfo.packet_number_length -
 	                             AEAD_TAG_LENGTH;
 
-	const uint8_t* tag_to_check =
-		&encrypted_packet[decryptInfo.unprotected_header.size() + payload_length -
-	                      decryptInfo.packet_number_length - AEAD_TAG_LENGTH];
+	if ( encrypted_payload_size < 0 )
+		throw hilti::rt::RuntimeError(
+			hilti::rt::fmt("encrypted_payload_size underflow %ld", encrypted_payload_size));
+
+	if ( all_data.size() <
+	     decryptInfo.unprotected_header.size() + encrypted_payload_size + AEAD_TAG_LENGTH )
+		throw hilti::rt::RuntimeError(
+			hilti::rt::fmt("all_data too short %ld < %ld", all_data.size(),
+		                   decryptInfo.unprotected_header.size() + encrypted_payload_size));
+
+	const void* tag_to_check = all_data.data() + decryptInfo.unprotected_header.size() +
+	                           encrypted_payload_size;
 	int tag_to_check_length = AEAD_TAG_LENGTH;
 
 	std::array<uint8_t, MAXIMUM_PACKET_LENGTH> decrypt_buffer;
@@ -232,7 +250,8 @@ hilti::rt::Bytes decrypt(const std::vector<uint8_t>& client_key,
 	EVP_CipherInit_ex(ctx, NULL, NULL, client_key.data(), decryptInfo.nonce.data(), 0);
 
 	// Set the tag to be validated after decryption
-	EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_TAG, tag_to_check_length, (void*)tag_to_check);
+	EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_TAG, tag_to_check_length,
+	                    const_cast<void*>(tag_to_check));
 
 	// Setting the second parameter to NULL will pass it as Associated Data
 	EVP_CipherUpdate(ctx, NULL, &out, decryptInfo.unprotected_header.data(),
@@ -258,8 +277,7 @@ it stores all the passed data in a global struct and then calls `process_data`,
 which will eventually return the decrypted data and pass it back to Spicy.
 */
 hilti::rt::Bytes
-QUIC_decrypt_crypto_payload(const hilti::rt::stream::SafeConstIterator& packet_stream,
-                            const hilti::rt::Bytes& connection_id,
+QUIC_decrypt_crypto_payload(const hilti::rt::Bytes& all_data, const hilti::rt::Bytes& connection_id,
                             const hilti::rt::integer::safe<uint64_t>& encrypted_offset,
                             const hilti::rt::integer::safe<uint64_t>& payload_length,
                             const hilti::rt::Bool& from_client)
@@ -268,15 +286,9 @@ QUIC_decrypt_crypto_payload(const hilti::rt::stream::SafeConstIterator& packet_s
 	if ( payload_length < 20 )
 		throw hilti::rt::RuntimeError(hilti::rt::fmt("payload too small %ld < 20", payload_length));
 
-	if ( (packet_stream + (encrypted_offset + payload_length - 1)).isEnd() )
-		throw hilti::rt::RuntimeError(
-			hilti::rt::fmt("packet too small %ld", encrypted_offset + payload_length));
-
-	// Fill in the entire packet bytes
-	std::vector<uint8_t> e_pkt;
-	hilti::rt::stream::detail::UnsafeConstIterator it{packet_stream};
-	while ( ! it.isEnd() )
-		e_pkt.push_back(*(it++));
+	if ( (all_data.size() < encrypted_offset + payload_length) )
+		throw hilti::rt::RuntimeError(hilti::rt::fmt("packet too small %ld %ld", all_data.size(),
+		                                             encrypted_offset + payload_length));
 
 	std::vector<uint8_t> initial_secret = hkdf_extract(connection_id);
 
@@ -294,10 +306,10 @@ QUIC_decrypt_crypto_payload(const hilti::rt::stream::SafeConstIterator& packet_s
 	std::vector<uint8_t> iv = hkdf_expand(AEAD_IV_LEN, server_client_secret, IV_INFO);
 	std::vector<uint8_t> hp = hkdf_expand(AEAD_HP_LEN, server_client_secret, HP_INFO);
 
-	DecryptionInformation decryptInfo = remove_header_protection(hp, encrypted_offset, e_pkt);
+	DecryptionInformation decryptInfo = remove_header_protection(hp, encrypted_offset, all_data);
 
 	// Calculate the correct nonce for the decryption
 	decryptInfo.nonce = calculate_nonce(iv, decryptInfo.packet_number);
 
-	return decrypt(key, e_pkt, payload_length, decryptInfo);
+	return decrypt(key, all_data, payload_length, decryptInfo);
 	}
