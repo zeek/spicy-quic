@@ -209,11 +209,6 @@ public type Frame = unit(header: LongHeaderPacket, from_client: bool, crypto_sin
   };
 };
 
-# TODO: investigate whether we can do something useful with this
-public type EncryptedLongPacketPayload = unit {
-  payload: bytes &eod;
-};
-
 type CRYPTOPayload = unit(from_client: bool) {
   offset: VariableLengthInteger;
   length: VariableLengthInteger;
@@ -312,7 +307,20 @@ public type ShortHeader = unit(dest_conn_id_length: uint8) {
 
 # TODO: investigate whether we can parse something useful out of this
 public type ShortPacketPayload = unit {
+@if SPICY_VERSION >= 10800
+  payload: skip bytes &eod;
+@else
   payload: bytes &eod;
+@endif
+};
+
+# TODO: investigate whether we can do something useful with this
+public type EncryptedLongPacketPayload = unit {
+@if SPICY_VERSION >= 10800
+  payload: skip bytes &eod;
+@else
+  payload: bytes &eod;
+@endif
 };
 
 # Buffer all crypto messages (which might be fragmented and unordered)
