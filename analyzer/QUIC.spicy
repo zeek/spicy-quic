@@ -4,7 +4,13 @@ import spicy;
 import zeek;
 
 # The interface to the C++ code that handles the decryption of the INITIAL packet payload using well-known keys
-public function decrypt_crypto_payload(packet: iterator<stream>, connection_id: bytes, encrypted_offset: uint64, payload_offset: uint64, from_client: bool): bytes &cxxname="decrypt_crypto_payload";
+public function decrypt_crypto_payload(
+  packet: iterator<stream>,
+  connection_id: bytes,
+  encrypted_offset: uint64,
+  payload_offset: uint64,
+  from_client: bool
+): bytes &cxxname="QUIC_decrypt_crypto_payload";
 
 
 ##############

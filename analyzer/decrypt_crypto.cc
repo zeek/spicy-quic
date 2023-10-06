@@ -23,6 +23,9 @@ refactors as C++ development is not our main profession.
 // Import HILTI
 #include <hilti/rt/libhilti.h>
 
+namespace
+	{
+
 // Struct to store decryption info for this specific connection
 struct DecryptionInformation
 	{
@@ -252,16 +255,19 @@ hilti::rt::Bytes decrypt(const std::vector<uint8_t>& client_key,
 	return hilti::rt::Bytes(decrypt_buffer.data(), decrypt_buffer.data() + out);
 	}
 
+	}
+
 /*
 Function that is called from Spicy. It's a wrapper around `process_data`;
 it stores all the passed data in a global struct and then calls `process_data`,
 which will eventually return the decrypted data and pass it back to Spicy.
 */
-hilti::rt::Bytes decrypt_crypto_payload(const hilti::rt::stream::SafeConstIterator& packet_stream,
-                                        const hilti::rt::Bytes& connection_id,
-                                        const hilti::rt::integer::safe<uint64_t>& encrypted_offset,
-                                        const hilti::rt::integer::safe<uint64_t>& payload_length,
-                                        const hilti::rt::Bool& from_client)
+hilti::rt::Bytes
+QUIC_decrypt_crypto_payload(const hilti::rt::stream::SafeConstIterator& packet_stream,
+                            const hilti::rt::Bytes& connection_id,
+                            const hilti::rt::integer::safe<uint64_t>& encrypted_offset,
+                            const hilti::rt::integer::safe<uint64_t>& payload_length,
+                            const hilti::rt::Bool& from_client)
 	{
 
 	if ( payload_length < 20 )
