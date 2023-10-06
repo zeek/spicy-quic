@@ -122,14 +122,6 @@ type FrameType = enum {
 # Helper units
 ##############
 
-# Used to peek into the next byte and determine if it's a long or short packet
-public type InitialByte = unit {
-  initialbyte: bitfield(8) {
-      header_form: 7 &convert=cast<HeaderForm>(cast<uint8>($$));
-      long_packet_type: 4..5 &convert=cast<LongPacketType>(cast<uint8>($$));
-  };
-};
-
 type VariableLengthInteger = unit {
   var bytes_to_parse: uint64;
   var result: uint64;
@@ -342,7 +334,6 @@ type CryptoBuffer = unit() {
 ##############
 type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
   var header_form: HeaderForm;
-  var long_packet_type: LongPacketType;
   var decrypted_data: bytes;
   var full_packet: bytes;
   var start: iterator<stream>;
@@ -367,12 +358,10 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
     self.start = self.input();
   }
 
-  # Peek into the header to check if it's a SHORT or LONG header
-  # and get the LONG packet type.
-  : InitialByte &parse-at=self.input() {
-    self.header_form = $$.initialbyte.header_form;
-    self.long_packet_type = $$.initialbyte.long_packet_type;
-    self.set_input(self.start);
+  # Peek into the first byte and determine the header type.
+  : uint8 {
+    self.header_form = ($$ & 0x80 == 0x80) ? HeaderForm::LONG : HeaderForm::SHORT;
+    self.set_input(self.start);  # rewind
   }
 
   # Depending on the header, parse it and update the src/dest ConnectionID's
