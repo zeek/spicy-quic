@@ -30,7 +30,6 @@ namespace
 struct DecryptionInformation
 	{
 	std::vector<uint8_t> unprotected_header;
-	std::vector<uint8_t> protected_header;
 	uint64_t packet_number;
 	std::vector<uint8_t> nonce;
 	uint8_t packet_number_length;
@@ -172,14 +171,10 @@ DecryptionInformation remove_header_protection(const std::vector<uint8_t>& clien
 		decoded_packet_number = unprotected_header[encrypted_offset + i] |
 		                        (decoded_packet_number << 8);
 		}
-	std::vector<uint8_t> protected_header(encrypted_packet.begin(),
-	                                      encrypted_packet.begin() + encrypted_offset +
-	                                          recovered_packet_number_length);
 
 	// Store the information back in the struct
 	decryptInfo.packet_number = decoded_packet_number;
 	decryptInfo.packet_number_length = recovered_packet_number_length;
-	decryptInfo.protected_header = std::move(protected_header);
 	decryptInfo.unprotected_header = std::move(unprotected_header);
 	return decryptInfo;
 	}
@@ -211,12 +206,12 @@ hilti::rt::Bytes decrypt(const std::vector<uint8_t>& client_key,
                          const DecryptionInformation& decryptInfo)
 	{
 	int out, out2, res;
-	const uint8_t* encrypted_payload = &encrypted_packet[decryptInfo.protected_header.size()];
+	const uint8_t* encrypted_payload = &encrypted_packet[decryptInfo.unprotected_header.size()];
 	int encrypted_payload_size = payload_length - decryptInfo.packet_number_length -
 	                             AEAD_TAG_LENGTH;
 
 	const uint8_t* tag_to_check =
-		&encrypted_packet[decryptInfo.protected_header.size() + payload_length -
+		&encrypted_packet[decryptInfo.unprotected_header.size() + payload_length -
 	                      decryptInfo.packet_number_length - AEAD_TAG_LENGTH];
 	int tag_to_check_length = AEAD_TAG_LENGTH;
 
