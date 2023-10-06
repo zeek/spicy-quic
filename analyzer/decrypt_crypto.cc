@@ -8,6 +8,7 @@ refactors as C++ development is not our main profession.
 */
 
 // Default imports
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -133,7 +134,7 @@ DecryptionInformation remove_header_protection(const std::vector<uint8_t>& clien
 
 	const uint8_t* sample = &encrypted_packet[encrypted_offset + MAXIMUM_PACKET_NUMBER_LENGTH];
 
-	std::vector<uint8_t> mask(AEAD_SAMPLE_LENGTH);
+	std::array<uint8_t, AEAD_SAMPLE_LENGTH> mask;
 	EVP_CipherUpdate(ctx, mask.data(), &outlen, sample, AEAD_SAMPLE_LENGTH);
 	EVP_CIPHER_CTX_free(ctx);
 
@@ -216,7 +217,7 @@ hilti::rt::Bytes decrypt(const std::vector<uint8_t>& client_key,
 	                      decryptInfo.packet_number_length - AEAD_TAG_LENGTH];
 	int tag_to_check_length = AEAD_TAG_LENGTH;
 
-	unsigned char decrypt_buffer[MAXIMUM_PACKET_LENGTH];
+	std::array<uint8_t, MAXIMUM_PACKET_LENGTH> decrypt_buffer;
 
 	// Setup context
 	auto cipher = EVP_aes_128_gcm();
@@ -241,14 +242,14 @@ hilti::rt::Bytes decrypt(const std::vector<uint8_t>& client_key,
 
 	// Set the actual data to decrypt data into the decrypt_buffer. The amount of
 	// byte decrypted is stored into `out`
-	EVP_CipherUpdate(ctx, decrypt_buffer, &out, encrypted_payload, encrypted_payload_size);
+	EVP_CipherUpdate(ctx, decrypt_buffer.data(), &out, encrypted_payload, encrypted_payload_size);
 
 	// Validate whether the decryption was successful or not
 	EVP_CipherFinal_ex(ctx, NULL, &out2);
 	EVP_CIPHER_CTX_free(ctx);
 
 	// Copy the decrypted data from the decrypted buffer into a Bytes instance.
-	return hilti::rt::Bytes(decrypt_buffer, decrypt_buffer + out);
+	return hilti::rt::Bytes(decrypt_buffer.data(), decrypt_buffer.data() + out);
 	}
 
 /*
