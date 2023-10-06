@@ -265,19 +265,31 @@ type InitialPacket = unit(header: LongHeaderPacket) {
   # includes the packet number field, but we
   # do not know its length yet. We need the
   # payload for sampling, however.
+@if SPICY_VERSION >= 10800
+  payload: skip bytes &size=self.length.result;
+@else
   payload: bytes &size=self.length.result;
+@endif
 };
 
 type ZeroRTTPacket = unit(header: LongHeaderPacket) {
   var header: LongHeaderPacket = header;
   length: VariableLengthInteger;
+@if SPICY_VERSION >= 10800
+  payload: skip bytes &size=self.length.result;
+@else
   payload: bytes &size=self.length.result;
+@endif
 };
 
 type HandshakePacket = unit(header: LongHeaderPacket) {
   var header: LongHeaderPacket = header;
   length: VariableLengthInteger;
+@if SPICY_VERSION >= 10800
+  payload: skip bytes &size=self.length.result;
+@else
   payload: bytes &size=self.length.result;
+@endif
 };
 
 
