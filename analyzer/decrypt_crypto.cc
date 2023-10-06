@@ -273,7 +273,7 @@ hilti::rt::Bytes decrypt_crypto_payload(const hilti::rt::stream::SafeConstIterat
 
 	// Fill in the entire packet bytes
 	std::vector<uint8_t> e_pkt;
-	hilti::rt::stream::SafeConstIterator it = packet_stream;
+	hilti::rt::stream::detail::UnsafeConstIterator it{packet_stream};
 	while ( ! it.isEnd() )
 		e_pkt.push_back(*(it++));
 
