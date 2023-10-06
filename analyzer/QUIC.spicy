@@ -11,27 +11,24 @@ public function decrypt_crypto_payload(packet: iterator<stream>, connection_id: 
 ## Context - tracked in one connection
 ##############
 
-# Should we buffer the packet?
-function should_buffer(context: ConnectionIDInfo, is_client: bool): bool {
-  if ( is_client )
-    return ! context.client_initial_processed;
-
-  return context.client_initial_processed
-          && |context.initial_destination_conn_id| > 0
-          && ! context.server_initial_processed;
-}
-
 # Can we decrypt?
-function can_decrypt(long_header: LongHeaderPacket): bool {
+function can_decrypt(long_header: LongHeaderPacket, context: ConnectionIDInfo, is_client: bool): bool {
 
   if ( long_header.first_byte.packet_type != LongPacketType::INITIAL )
     return False;
 
   # decrypt_crypto_payload() has known secrets for version 1, nothing else.
-  if ( long_header.version == 0x00000001 )
-    return True;
+  if ( long_header.version != 0x00000001 )
+    return False;
 
-  return False;
+  if ( is_client )
+    return ! context.client_initial_processed;
+
+  # This is the responder, can only decrypt if we have an initial
+  # destination_id from the client
+  return context.client_initial_processed
+          && |context.initial_destination_conn_id| > 0
+          && ! context.server_initial_processed;
 }
 
 type ConnectionIDInfo = struct {
@@ -401,7 +398,7 @@ type Packet = unit(from_client: bool, context: ConnectionIDInfo&) {
 @endif
         }
 
-        if ( can_decrypt(self.long_header) && should_buffer(context, from_client) ) {
+        if ( can_decrypt(self.long_header, context, from_client) ) {
 
           # Initialize sink/buffer for accumulating CRYPTO frames.
           #
