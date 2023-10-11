@@ -1,5 +1,10 @@
 # Spicy analyzer for the QUIC protocol
 
+> **Note**
+>
+> Zeek 6.1 and later versions include the QUIC analyzer.
+> You no longer need this package when using those Zeek versions.
+
 A QUIC protocol analyzer for Zeek, based on Spicy. This analyzer tries to be
 compatible with [QUIC IETF version 1](https://datatracker.ietf.org/doc/html/rfc9000)
 Current focus is on extraction of ClientHello and ServerHello messages from

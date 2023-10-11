@@ -11,7 +11,6 @@ jobs:
         image:
           - zeek-6.0
           - zeek-5.2
-          - zeek-dev
     steps:
     - uses: actions/checkout@v2
     - run: docker build -t ${{ matrix.image }}-quic -f docker/${{ matrix.image }}.Dockerfile .
