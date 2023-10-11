@@ -1,8 +1,10 @@
 # Copyright (c) 2023, NCC Group / Fox-IT. See COPYING for details.
 # Copyright (c) 2023 by the Zeek Project. See COPYING for details.
 
+@if ZEEK_VERSION >= 60100
 %doc-id = Zeek::QUIC;
 %doc-description = "QUIC analyzer";
+@endif
 
 protocol analyzer QUIC over UDP:
     parse originator with QUIC::RequestFrame,
