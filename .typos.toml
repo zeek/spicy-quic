@@ -1,0 +1,3 @@
+[default.extend-words]
+# `inout` is used as a keyword in Spicy, but looks like a typo of `input`.
+inout = "inout"
